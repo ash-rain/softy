@@ -6,11 +6,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV GHIDRA_VERSION=11.3
 ENV GHIDRA_DATE=20250205
 ENV GHIDRA_HOME=/opt/ghidra
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 
 # ── System packages ────────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Java for Ghidra
-    openjdk-21-jre-headless \
+    # Java for Ghidra (needs full JDK, not just JRE)
+    openjdk-21-jdk-headless \
     # Build tools & utilities
     curl wget unzip git file binutils \
     # LLVM/Clang toolchain
