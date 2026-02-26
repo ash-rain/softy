@@ -47,32 +47,46 @@ The product is a desktop application — local-first, private by default, cross-
 
 ## 2. Architecture
 
-### Process Model
+### Docker-First Backend
+
+All heavy RE tooling runs inside a Docker container — zero host pollution. Electron communicates with the container over HTTP on `localhost:7800`. Binaries are shared via a volume mount at `~/.softy/work` (host) ↔ `/work` (container).
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  Electron Main Process (Node.js)                             │
-│                                                              │
-│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ IPC Router  │  │  Tool Manager   │  │  Project Store  │  │
-│  │             │  │                 │  │  (SQLite)       │  │
-│  │ ipcMain     │  │ Ghidra          │  │                 │  │
-│  │ handlers    │  │ r2pipe          │  │ Projects        │  │
-│  │             │  │ RetDec          │  │ Sessions        │  │
-│  │             │  │ LLVM            │  │ AI history      │  │
-│  │             │  │ Keystone        │  │                 │  │
-│  └──────┬──────┘  └─────────────────┘  └─────────────────┘  │
-│         │                                                    │
-│  ┌──────▼──────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │  AI Manager │  │Resource Extractor│  │  File Analyzer  │  │
-│  │             │  │                 │  │                 │  │
-│  │ Ollama      │  │ PE resources    │  │ Format detect   │  │
-│  │ OpenAI      │  │ ELF sections    │  │ Arch detect     │  │
-│  │ Anthropic   │  │ Mach-O segments │  │ Entropy         │  │
-│  │ OpenRouter  │  │                 │  │ Hashing         │  │
-│  └─────────────┘  └─────────────────┘  └─────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
-                              │ IPC (contextBridge)
+┌─────────────────────────────────────────────────────────────────┐
+│  Docker Container  (softy-tools, port 7800)                     │
+│  Ubuntu 24.04                                                   │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  FastAPI Server (Python 3.12, uvicorn)                  │    │
+│  │                                                         │    │
+│  │  POST /api/analyze      → lief parse, hashes, entropy   │    │
+│  │  GET  /api/analyze/strings → printable string extract   │    │
+│  │  POST /api/decompile/start  → spawn Ghidra headless     │    │
+│  │  GET  /api/decompile/stream/{id} → SSE function stream  │    │
+│  │  POST /api/decompile/quick  → r2pipe fast analysis      │    │
+│  │  POST /api/compile      → Clang-17 C/C++ → object       │    │
+│  │  POST /api/compile/assemble → NASM → object             │    │
+│  │  GET  /api/resources/list   → PE/ELF/Mach-O resources   │    │
+│  │  GET  /api/resources/data   → raw resource bytes        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
+│  Tools: Ghidra 11.3 · Radare2 · LLVM/Clang 17 · NASM · lief    │
+└─────────────────────────────────────────────────────────────────┘
+                              ▲
+                    HTTP / SSE (localhost:7800)
+                    Volume: ~/.softy/work ↔ /work
+                              │
+┌─────────────────────────────▼───────────────────────────────────┐
+│  Electron Main Process (Node.js)                                │
+│                                                                 │
+│  DockerBridge          IPC Handlers          AI Manager        │
+│  ─────────────         ────────────          ──────────        │
+│  ensureRunning()       binary.ipc.ts         Ollama            │
+│  stageFile()           decompiler.ipc.ts     OpenAI            │
+│  HTTP client           compiler.ipc.ts       Anthropic         │
+│  SSE reader            ai.ipc.ts             OpenRouter        │
+└─────────────────────────────────────────────────────────────────┘
+                              │ contextBridge (window.softy)
 ┌─────────────────────────────▼────────────────────────────────┐
 │  Renderer Process (Vue 3 + Vite)                             │
 │                                                              │
@@ -1194,24 +1208,38 @@ API keys stored encrypted using Electron's `safeStorage` API (OS keychain integr
 
 ## 15. External Tool Dependencies
 
+> **All tools run inside Docker** — zero host installation required. The container
+> image is built once (`npm run docker:build`) and started on demand.
+
+### Docker Container (`docker/Dockerfile`)
+- **Base**: Ubuntu 24.04
+- **Exposed port**: 7800 (FastAPI / uvicorn)
+- **Work volume**: `~/.softy/work` (host) ↔ `/work` (container)
+
 ### Ghidra
-- **Version**: 11.3 (latest)
-- **Download**: https://github.com/NationalSecurityAgency/ghidra/releases
-- **JRE**: OpenJDK 21 (bundled in app)
-- **Integration**: Headless mode via `analyzeHeadless` script
+- **Version**: 11.3 PUBLIC (20250205)
+- **JRE**: `openjdk-21-jre-headless` (installed in container)
+- **Integration**: Headless `analyzeHeadless` + `DecompileAll.java` script (SSE stream)
 - **License**: Apache 2.0
 
 ### Radare2
-- **Version**: 5.9.x
-- **npm**: `r2pipe` (Node.js binding)
-- **Binaries**: bundled per platform (macOS arm64/x64, Windows x64, Linux x64)
+- **Package**: `radare2` (Ubuntu apt) + `r2pipe` (Python)
+- **Usage**: Quick analysis fallback, function/import listing
 - **License**: LGPLv3
 
-### RetDec
-- **Version**: 5.0.x
-- **Binaries**: bundled per platform
-- **Usage**: CLI `retdec-decompiler --backend-no-opts -o out.c binary`
-- **License**: MIT
+### LLVM / Clang 17
+- **Package**: `clang-17`, `llvm-17` (Ubuntu apt LLVM repos)
+- **Usage**: C/C++ compilation back to binary, IR generation
+- **Targets**: x86_64-linux-gnu, aarch64-linux-gnu, arm-linux-gnueabihf
+
+### NASM
+- **Package**: `nasm` (Ubuntu apt)
+- **Usage**: Assemble x86/x86_64 ASM back to object files
+- **License**: BSD 2-Clause
+
+### Python / FastAPI backend
+- **Runtime**: Python 3.12
+- **Key libs**: `lief 0.15` (binary parsing), `fastapi 0.115`, `sse-starlette`, `r2pipe`
 
 ### LLVM/Clang
 - **Strategy**: detect system installation first (`clang --version`), fall back to bundled
