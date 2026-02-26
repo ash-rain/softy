@@ -1,0 +1,25 @@
+services:
+  softy-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: softy-tools:latest
+    container_name: softy-tools
+    ports:
+      - "7800:7800"
+    volumes:
+      # Host work dir ↔ /work in container (binaries passed here)
+      - "${HOME}/.softy/work:/work"
+      # Ghidra projects stored on host for caching
+      - "${HOME}/.softy/ghidra-projects:/ghidra-projects"
+    environment:
+      - GHIDRA_HOME=/opt/ghidra
+      - WORK_DIR=/work
+      - GHIDRA_PROJECTS_DIR=/ghidra-projects
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7800/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

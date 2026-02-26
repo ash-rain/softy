@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sse-starlette==2.2.1
+lief==0.15.1
+r2pipe==1.9.4
+python-magic==0.4.27
+aiofiles==24.1.0
+pydantic==2.10.4
+httpx==0.28.1

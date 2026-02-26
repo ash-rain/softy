@@ -1,0 +1,41 @@
+{
+  "name": "softy",
+  "version": "0.1.0",
+  "description": "Decompile any binary. Edit it. Compile it back.",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:build": "docker compose -f docker/docker-compose.yml build",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^4.0.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-prettier": "^2.0.0",
+    "@electron-toolkit/eslint-config-ts": "^2.0.0",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.7",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^33.4.0",
+    "electron-vite": "^3.0.0",
+    "pinia": "^2.3.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "@vueuse/core": "^12.0.0",
+    "monaco-editor": "^0.52.2"
+  }
+}

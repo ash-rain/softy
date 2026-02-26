@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+@import "tailwindcss";
+
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
+@theme {
+  /* Backgrounds */
+  --color-bg-void:     #030507;
+  --color-bg-base:     #090d12;
+  --color-bg-surface:  #0f1520;
+  --color-bg-elevated: #161e2e;
+  --color-bg-border:   #1e2d42;
+
+  /* Accent */
+  --color-accent:      #00d4ff;
+  --color-accent-dim:  #0099cc;
+
+  /* Status */
+  --color-ok:          #00ff9d;
+  --color-warn:        #ffaa00;
+  --color-error:       #ff4444;
+  --color-ai:          #a855f7;
+
+  /* Text */
+  --color-text-primary:   #e8f4fd;
+  --color-text-secondary: #7a9ab8;
+  --color-text-muted:     #3d5a78;
+  --color-text-code:      #c9e8ff;
+
+  /* Fonts */
+  --font-family-ui:   'Inter', system-ui, sans-serif;
+  --font-family-code: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Radius */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+}
+
+/* ── Base reset ────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family-ui);
+  background: var(--color-bg-void);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Allow text selection inside editor/code areas */
+.selectable, .monaco-editor * {
+  user-select: text;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ── Custom window draggable region ────────────────────────────────────────── */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ── Glass card ────────────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(15, 21, 32, 0.85);
+  border: 1px solid rgba(30, 45, 66, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+/* ── Glow effects ──────────────────────────────────────────────────────────── */
+.glow-accent {
+  box-shadow: 0 0 0 1px var(--color-accent), 0 0 16px rgba(0, 212, 255, 0.15);
+}
+.glow-ai {
+  box-shadow: 0 0 0 1px var(--color-ai), 0 0 16px rgba(168, 85, 247, 0.15);
+}
+
+/* ── Code / mono ───────────────────────────────────────────────────────────── */
+code, pre, .mono {
+  font-family: var(--font-family-code);
+  font-size: 12px;
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 212, 255, 0); }
+  50%       { box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.15); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes scan {
+  0%   { opacity: 0; top: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { opacity: 0; top: 100%; }
+}
+
+.animate-fade-in  { animation: fade-in 0.25s ease; }
+.animate-fade-up  { animation: fade-up 0.3s ease; }
+.animate-spin     { animation: spin 1s linear infinite; }
+.animate-pulse-glow { animation: pulse-glow 2s ease infinite; }
+
+/* ── Entropy bar colors ─────────────────────────────────────────────────────── */
+.entropy-low    { background: var(--color-ok);    opacity: 0.8; }
+.entropy-medium { background: var(--color-warn);  opacity: 0.8; }
+.entropy-high   { background: var(--color-error); opacity: 0.8; }
+
+/* ── AI badge ──────────────────────────────────────────────────────────────── */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ai);
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+/* ── Utility: panel resize handle ─────────────────────────────────────────── */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.resize-handle:hover {
+  background: var(--color-accent);
+  opacity: 0.4;
+}

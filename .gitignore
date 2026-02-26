@@ -1,0 +1,21 @@
+node_modules
+out
+dist
+.DS_Store
+*.local
+
+# electron-vite
+out/
+
+# Docker
+docker/server/__pycache__/
+docker/server/**/__pycache__/
+docker/server/.env
+
+# Softy work directory
+.softy-work/
+
+# env
+.env
+.env.*
+!.env.example
