@@ -36,6 +36,34 @@ def _resolve(rel: str) -> Path:
     return p
 
 
+_GHIDRA_PIE_BASES = [0x100000, 0x10000000, 0x400000]
+
+
+def _resolve_vaddr(binary, vaddr: int) -> int | None:
+    """
+    Map a (possibly Ghidra-adjusted) virtual address to lief's native ELF vaddr.
+
+    Ghidra shifts PIE ELF addresses by a constant image base (0x100000 for
+    x86-64). lief uses the raw ELF virtual addresses. This function tries the
+    given address first, then subtracts each known Ghidra base until the result
+    falls within a non-empty section.  Returns None if nothing matches.
+    """
+    sections = [s for s in binary.sections if s.size > 0 and s.virtual_address > 0]
+
+    def _in_sections(addr: int) -> bool:
+        return any(s.virtual_address <= addr < s.virtual_address + s.size for s in sections)
+
+    if _in_sections(vaddr):
+        return vaddr
+
+    for base in _GHIDRA_PIE_BASES:
+        adjusted = vaddr - base
+        if adjusted > 0 and _in_sections(adjusted):
+            return adjusted
+
+    return None
+
+
 class PatchRequest(BaseModel):
     filePath:        str   # relative path to the binary
     functionAddress: str   # hex string, e.g. "0x401010" or "401010"
@@ -65,8 +93,16 @@ async def patch_function(req: PatchRequest) -> Response:
     except Exception as exc:
         raise HTTPException(400, f"Invalid base64 in objectBase64: {exc}") from exc
 
-    # Extract .text from compiled object
-    obj = lief.parse(list(obj_bytes))
+    # Extract .text from compiled object — lief needs a file path, not raw bytes
+    with tempfile.NamedTemporaryFile(suffix=".o", delete=False) as obj_tmp:
+        obj_tmp_path = Path(obj_tmp.name)
+        obj_tmp.write(obj_bytes)
+
+    try:
+        obj = lief.parse(str(obj_tmp_path))
+    finally:
+        obj_tmp_path.unlink(missing_ok=True)
+
     if obj is None:
         raise HTTPException(422, "Failed to parse compiled object file")
 
@@ -90,14 +126,25 @@ async def patch_function(req: PatchRequest) -> Response:
     if binary is None:
         raise HTTPException(422, "Failed to parse target binary")
 
+    # Ghidra maps PIE ELF binaries to 0x100000 on x86-64, but lief uses the
+    # ELF file's native virtual addresses (which start near 0x0 for PIE).
+    # Detect and strip the Ghidra base offset if the raw vaddr is out of range.
+    native_vaddr = _resolve_vaddr(binary, vaddr)
+    if native_vaddr is None:
+        raise HTTPException(400, (
+            f"Virtual address 0x{vaddr:x} is not within any section of the binary. "
+            "Make sure the address is the Ghidra virtual address for this function."
+        ))
+
     # Choose NOP byte(s) based on architecture
     try:
-        arch_name = binary.header.machine_type.name.lower()
+        arch_name = str(binary.header.machine_type)
     except AttributeError:
         arch_name = ""
+    arch_lower = arch_name.lower()
 
     pad_count = req.functionSize - len(new_code)
-    if "aarch" in arch_name or ("arm" in arch_name and "64" in arch_name):
+    if "aarch" in arch_lower or ("arm" in arch_lower and "64" in arch_lower):
         # AArch64 NOP: 1f 20 03 d5 (little-endian)
         nop_word = b'\x1f\x20\x03\xd5'
         full_nops = (pad_count // 4) * nop_word + b'\x00' * (pad_count % 4)
@@ -106,7 +153,7 @@ async def patch_function(req: PatchRequest) -> Response:
         full_nops = bytes([0x90] * pad_count)
 
     full_patch = list(new_code + full_nops)
-    binary.patch_address(vaddr, full_patch)
+    binary.patch_address(native_vaddr, full_patch)
 
     # Write to a temp file and read back the bytes
     with tempfile.NamedTemporaryFile(suffix=".patched", delete=False) as tmp:
