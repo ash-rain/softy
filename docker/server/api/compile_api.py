@@ -7,13 +7,12 @@ import asyncio
 import base64
 import os
 import tempfile
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter()
+router   = APIRouter()
 WORK_DIR = os.environ.get("WORK_DIR", "/work")
 
 ARCH_TRIPLES = {
@@ -33,27 +32,28 @@ OS_OVERRIDES = {
 
 
 class CompileRequest(BaseModel):
-    sourceCode: str
-    arch: str = "x86_64"
-    os: str = "linux"
-    optimize: str = "O1"           # O0, O1, O2, Os
-    outputFormat: str = "object"   # "object" | "asm" | "ir"
-    extraFlags: list[str] = []
+    sourceCode:   str
+    arch:         str = "x86_64"
+    os:           str = "linux"
+    optimize:     str = "O1"          # O0 O1 O2 Os
+    outputFormat: str = "object"      # "object" | "asm" | "ir"
+    extraFlags:   list[str] = []
 
 
 class CompileResponse(BaseModel):
-    success: bool
-    output: str | None       # base64-encoded binary or text
+    success:      bool
+    output:       str | None  # base64 for object; plain text for asm/ir
     outputFormat: str
-    errors: list[dict]
-    warnings: list[dict]
-    sizeBytes: int
+    isText:       bool        # True when output is plain text (asm/ir)
+    errors:       list[dict]
+    warnings:     list[dict]
+    sizeBytes:    int
 
 
 class AssembleRequest(BaseModel):
     assembly: str
-    arch: str = "x86_64"
-    syntax: str = "intel"   # "intel" | "att"
+    arch:     str = "x86_64"
+    syntax:   str = "intel"   # "intel" | "att"
 
 
 def _parse_clang_diagnostics(stderr: str) -> tuple[list[dict], list[dict]]:
@@ -62,20 +62,20 @@ def _parse_clang_diagnostics(stderr: str) -> tuple[list[dict], list[dict]]:
         if ": error:" in line:
             parts = line.split(":", 4)
             errors.append({
-                "file": parts[0] if len(parts) > 0 else "",
-                "line": int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0,
-                "col":  int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0,
-                "message": parts[-1].strip() if parts else line,
-                "raw": line,
+                "file":    parts[0] if parts else "",
+                "line":    int(parts[1]) if len(parts) > 1 and parts[1].strip().isdigit() else 0,
+                "col":     int(parts[2]) if len(parts) > 2 and parts[2].strip().isdigit() else 0,
+                "message": parts[-1].strip(),
+                "raw":     line,
             })
         elif ": warning:" in line:
             parts = line.split(":", 4)
             warnings.append({
-                "file": parts[0] if len(parts) > 0 else "",
-                "line": int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0,
-                "col":  int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0,
-                "message": parts[-1].strip() if parts else line,
-                "raw": line,
+                "file":    parts[0] if parts else "",
+                "line":    int(parts[1]) if len(parts) > 1 and parts[1].strip().isdigit() else 0,
+                "col":     int(parts[2]) if len(parts) > 2 and parts[2].strip().isdigit() else 0,
+                "message": parts[-1].strip(),
+                "raw":     line,
             })
     return errors, warnings
 
@@ -86,18 +86,29 @@ async def compile_code(req: CompileRequest):
     os_key   = req.os.lower()
     triple   = OS_OVERRIDES.get((arch_key, os_key)) or ARCH_TRIPLES.get(arch_key, "x86_64-unknown-linux-gnu")
 
-    fmt_flag = {
-        "object": "-c",
-        "asm":    "-S",
-        "ir":     "-emit-llvm -S",
-    }.get(req.outputFormat, "-c")
-
-    ext = {"object": ".o", "asm": ".s", "ir": ".ll"}.get(req.outputFormat, ".o")
+    # Map output format to clang flags and file extension
+    fmt_flags: list[str]
+    if req.outputFormat == "object":
+        fmt_flags = ["-c"]
+        ext       = ".o"
+        is_text   = False
+    elif req.outputFormat == "asm":
+        fmt_flags = ["-S"]
+        ext       = ".s"
+        is_text   = True
+    elif req.outputFormat == "ir":
+        fmt_flags = ["-emit-llvm", "-S"]
+        ext       = ".ll"
+        is_text   = True
+    else:
+        fmt_flags = ["-c"]
+        ext       = ".o"
+        is_text   = False
 
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "input.c"
         out = Path(tmp) / f"output{ext}"
-        src.write_text(req.sourceCode)
+        src.write_text(req.sourceCode, encoding="utf-8")
 
         cmd = [
             "clang-17",
@@ -105,7 +116,8 @@ async def compile_code(req: CompileRequest):
             f"--target={triple}",
             "-fPIC",
             "-fno-builtin",
-        ] + fmt_flag.split() + req.extraFlags + [
+            *fmt_flags,
+            *req.extraFlags,
             "-o", str(out),
             str(src),
         ]
@@ -115,26 +127,28 @@ async def compile_code(req: CompileRequest):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr_bytes = await proc.communicate()
+        _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=120)
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
         errors, warnings = _parse_clang_diagnostics(stderr)
         success = proc.returncode == 0
 
-        output_b64 = None
-        size = 0
+        output_data = None
+        size        = 0
         if success and out.exists():
-            raw = out.read_bytes()
+            raw  = out.read_bytes()
             size = len(raw)
-            if req.outputFormat == "object":
-                output_b64 = base64.b64encode(raw).decode()
+            if is_text:
+                # Return assembly/IR as plain text (not base64)
+                output_data = raw.decode("utf-8", errors="replace")
             else:
-                output_b64 = base64.b64encode(raw).decode()
+                output_data = base64.b64encode(raw).decode()
 
         return CompileResponse(
             success=success,
-            output=output_b64,
+            output=output_data,
             outputFormat=req.outputFormat,
+            isText=is_text,
             errors=errors,
             warnings=warnings,
             sizeBytes=size,
@@ -143,25 +157,33 @@ async def compile_code(req: CompileRequest):
 
 @router.post("/assemble")
 async def assemble_code(req: AssembleRequest):
-    """Assemble with NASM (x86/x86_64 only) or clang (other arches)."""
-    if req.arch.lower() in ("x86", "x86_64"):
-        with tempfile.TemporaryDirectory() as tmp:
-            src = Path(tmp) / "input.asm"
-            out = Path(tmp) / "output.o"
-            # NASM format header
-            bits = "64" if req.arch.lower() == "x86_64" else "32"
-            asm = f"BITS {bits}\n{req.assembly}"
-            src.write_text(asm)
-            cmd = ["nasm", "-f", "elf64" if bits == "64" else "elf32", str(src), "-o", str(out)]
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr_bytes = await proc.communicate()
-            stderr = stderr_bytes.decode()
-            if proc.returncode != 0:
-                return {"success": False, "output": None, "errors": [{"message": stderr}]}
-            raw = out.read_bytes()
-            return {"success": True, "output": base64.b64encode(raw).decode(), "errors": []}
-    else:
-        raise HTTPException(422, f"Assembly for arch {req.arch} not yet supported")
+    """Assemble x86/x86_64 with NASM."""
+    arch = req.arch.lower()
+    if arch not in ("x86", "x86_64"):
+        raise HTTPException(422, f"Assembly for arch {req.arch} not yet supported. Only x86/x86_64.")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src  = Path(tmp) / "input.asm"
+        out  = Path(tmp) / "output.o"
+        bits = "64" if arch == "x86_64" else "32"
+        fmt  = "elf64" if bits == "64" else "elf32"
+        src.write_text(f"BITS {bits}\n{req.assembly}", encoding="utf-8")
+
+        cmd = ["nasm", "-f", fmt, str(src), "-o", str(out)]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=30)
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+
+        if proc.returncode != 0:
+            return {"success": False, "output": None,
+                    "errors": [{"message": stderr.strip()}]}
+
+        raw = out.read_bytes()
+        return {
+            "success": True,
+            "output":  base64.b64encode(raw).decode(),
+            "errors":  [],
+        }

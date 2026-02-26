@@ -34,11 +34,49 @@ export function registerAIIPC(_docker: DockerBridge): void {
   })
 
   // Streaming chat — sends chunks back via webContents.send
+  // Non-streaming rename — returns suggested snake_case name or null
+  ipcMain.handle('ai:rename', async (_, { provider, model, apiKey, code, currentName }: {
+    provider: string; model: string; apiKey: string; code: string; currentName: string
+  }) => {
+    const prompt = [
+      'You are a reverse engineering expert.',
+      'Given this decompiled C function, suggest a concise snake_case name that describes what it does.',
+      'Reply with ONLY the function name — no explanation, no parentheses, no extra text.',
+      '',
+      `Current name: ${currentName}`,
+      '',
+      '```c',
+      code.slice(0, 3000),
+      '```',
+    ].join('\n')
+
+    const messages = [{ role: 'user' as const, content: prompt }]
+    let result = ''
+    const onChunk = (t: string) => { result += t }
+
+    try {
+      if (provider === 'ollama') {
+        await streamOllama(model, messages, onChunk)
+      } else if (provider === 'openai') {
+        await streamOpenAI(model, messages, apiKey, onChunk)
+      } else if (provider === 'anthropic') {
+        await streamAnthropic(model, messages, apiKey, onChunk)
+      } else if (provider === 'openrouter') {
+        await streamOpenAI(model, messages, apiKey, onChunk, 'https://openrouter.ai/api/v1')
+      }
+      // Extract first token, strip non-identifier chars
+      const name = result.trim().split(/[\s\n(]/)[0].replace(/[^a-zA-Z0-9_]/g, '')
+      return name || null
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.on('ai:chat', async (event, { provider, model, apiKey, messages, sessionId }) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
 
-    const send = (type: string, payload: unknown) => {
+    const send = (type: string, payload: Record<string, unknown>) => {
       if (!win.isDestroyed()) win.webContents.send('ai:event', { type, sessionId, ...payload })
     }
 

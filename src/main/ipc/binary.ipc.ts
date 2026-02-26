@@ -2,7 +2,7 @@
  * Binary IPC — file open dialog, staging, analysis, resources, strings.
  */
 
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog } from 'electron'
 import { DockerBridge } from '../bridge/docker'
 import { randomUUID } from 'crypto'
 import { basename } from 'path'

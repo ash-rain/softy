@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import os
 import logging
 
-from api import analyze, decompile, compile_api, resources
+from api import analyze, decompile, compile_api, resources, patch_api
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("softy")
@@ -44,6 +44,7 @@ app.include_router(analyze.router,     prefix="/api/analyze",     tags=["analyze
 app.include_router(decompile.router,   prefix="/api/decompile",   tags=["decompile"])
 app.include_router(compile_api.router, prefix="/api/compile",     tags=["compile"])
 app.include_router(resources.router,   prefix="/api/resources",   tags=["resources"])
+app.include_router(patch_api.router,   prefix="/api/patch",       tags=["patch"])
 
 
 @app.get("/health")

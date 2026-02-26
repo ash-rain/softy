@@ -7,11 +7,9 @@
  */
 
 import { app } from 'electron'
-import { spawn, execSync } from 'child_process'
+import { spawn } from 'child_process'
 import { join } from 'path'
-import { mkdirSync, copyFileSync, existsSync } from 'fs'
-import { createHash } from 'crypto'
-import { readFileSync } from 'fs'
+import { mkdirSync, copyFileSync } from 'fs'
 
 const BASE_URL  = 'http://127.0.0.1:7800'
 const COMPOSE   = join(__dirname, '../../../../docker/docker-compose.yml')
@@ -167,13 +165,30 @@ export class DockerBridge {
     return this._get(`/api/resources/list?filePath=${encodeURIComponent(relPath)}`)
   }
 
+  /** Patch a function's bytes in the binary. Returns the patched binary as a Buffer. */
+  async patchBinary(req: PatchBinaryRequest): Promise<Buffer> {
+    const res = await fetch(`${BASE_URL}/api/patch/function`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Patch error ${res.status}: ${err}`)
+    }
+    const ab = await res.arrayBuffer()
+    return Buffer.from(ab)
+  }
+
   // ── HTTP helpers ──────────────────────────────────────────────────────────
 
-  private async _post<T>(path: string, body: unknown): Promise<T> {
+  private async _post<T>(path: string, body: unknown, timeoutMs = 90_000): Promise<T> {
     const res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
     })
     if (!res.ok) {
       const err = await res.text()
@@ -182,8 +197,10 @@ export class DockerBridge {
     return res.json()
   }
 
-  private async _get<T>(path: string): Promise<T> {
-    const res = await fetch(`${BASE_URL}${path}`)
+  private async _get<T>(path: string, timeoutMs = 30_000): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    })
     if (!res.ok) throw new Error(`GET ${path} → ${res.status}`)
     return res.json()
   }
@@ -304,6 +321,13 @@ export interface AssembleResponse {
   success: boolean
   output: string | null
   errors: { message: string }[]
+}
+
+export interface PatchBinaryRequest {
+  filePath:        string  // relative path to the binary in work dir
+  functionAddress: string  // hex string e.g. "0x401010"
+  functionSize:    number  // original function size in bytes
+  objectBase64:    string  // base64-encoded compiled .o file
 }
 
 export interface ResourceNode {

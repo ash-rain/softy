@@ -49,6 +49,7 @@ export const useBinaryStore = defineStore('binary', () => {
   const isDecompiling     = ref(false)
   const decompileProgress = ref(0)
   const decompileBackend  = ref<'ghidra' | 'r2'>('ghidra')
+  const decompileError    = ref<string | null>(null)
   const functions         = ref<Map<string, DecompiledFunction>>(new Map())
   const functionList      = computed(() => Array.from(functions.value.values()))
   const totalFunctions    = ref(0)
@@ -76,6 +77,7 @@ export const useBinaryStore = defineStore('binary', () => {
     totalFunctions.value = result.quick.functions.length
     activeFunction.value = null
     decompileProgress.value = 0
+    decompileError.value = null
   }
 
   function addFunction(fn: DecompiledFunction) {
@@ -91,20 +93,26 @@ export const useBinaryStore = defineStore('binary', () => {
     activeFunction.value = functions.value.get(address) ?? null
   }
 
+  function renameFunction(address: string, name: string) {
+    const fn = functions.value.get(address)
+    if (fn) fn.name = name
+  }
+
   function reset() {
     projectId.value = null; projectName.value = ''; localPath.value = ''
     relPath.value = ''; meta.value = null; quickInfo.value = null
     isDecompiling.value = false; isAnalyzing.value = false
     functions.value = new Map(); activeFunction.value = null
     resources.value = []; strings.value = []; decompileProgress.value = 0
+    decompileError.value = null
   }
 
   return {
     projectId, projectName, localPath, relPath,
     isAnalyzing, meta, quickInfo,
-    isDecompiling, decompileProgress, decompileBackend,
+    isDecompiling, decompileProgress, decompileBackend, decompileError,
     functions, functionList, totalFunctions, activeFunction,
     resources, strings,
-    openBinary, addFunction, updateFunctionCode, setActiveFunction, reset,
+    openBinary, addFunction, updateFunctionCode, setActiveFunction, renameFunction, reset,
   }
 })

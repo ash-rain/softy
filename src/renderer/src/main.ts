@@ -7,4 +7,15 @@ import './assets/styles/main.css'
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
+
+// Global Vue error handler — prevents silent failures
+app.config.errorHandler = (err, _instance, info) => {
+  console.error('[Vue error]', info, err)
+}
+
+// Catch unhandled promise rejections
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[Unhandled rejection]', e.reason)
+})
+
 app.mount('#app')

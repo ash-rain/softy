@@ -18,8 +18,11 @@ onMounted(async () => {
   try {
     await window.softy.decompile.start(binary.relPath, binary.projectId, binary.decompileBackend)
   } catch (err) {
-    console.error('Failed to start decompile:', err)
+    const msg = (err as Error).message ?? 'Failed to start decompilation'
     binary.isDecompiling = false
+    binary.decompileError = msg
+    ui.setStatus('')
+    return
   }
 
   // Listen for streamed function events
@@ -36,7 +39,8 @@ onMounted(async () => {
       setTimeout(() => ui.setStatus(''), 3000)
     } else if (ev.type === 'error') {
       binary.isDecompiling = false
-      ui.setStatus(`Error: ${ev.message as string}`)
+      binary.decompileError = ev.message as string
+      ui.setStatus('')
     }
   })
 

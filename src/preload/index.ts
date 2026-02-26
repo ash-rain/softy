@@ -38,12 +38,14 @@ const softyAPI = {
   compile: {
     code:     (req: unknown) => ipcRenderer.invoke('compile:code', req),
     assemble: (req: unknown) => ipcRenderer.invoke('compile:assemble', req),
+    patch:    (req: unknown) => ipcRenderer.invoke('compile:patch', req),
   },
 
   // ── AI ─────────────────────────────────────────────────────────────────────
   ai: {
     providers:    ()           => ipcRenderer.invoke('ai:providers'),
     ollamaModels: ()           => ipcRenderer.invoke('ai:ollama-models'),
+    rename: (payload: unknown) => ipcRenderer.invoke('ai:rename', payload),
     chat: (payload: unknown)   => ipcRenderer.send('ai:chat', payload),
     onEvent: (cb: (event: Record<string, unknown>) => void) => {
       const handler = (_: Electron.IpcRendererEvent, data: Record<string, unknown>) => cb(data)

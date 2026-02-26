@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, defineComponent, h } from 'vue'
+import { ref, computed, defineComponent, h, onMounted, onUnmounted } from 'vue'
 import { useBinaryStore } from '@/stores/binary.store'
 import { useUIStore } from '@/stores/ui.store'
 
 const binary = useBinaryStore()
 const ui     = useUIStore()
 const search = ref('')
+
+const ITEM_HEIGHT  = 36
+const OVERSCAN     = 5
+
+// ── Virtual scroll ───────────────────────────────────────────────────────────
+const listEl         = ref<HTMLElement | null>(null)
+const scrollTop      = ref(0)
+const viewportHeight = ref(400)
 
 const filteredFunctions = computed(() => {
   const q = search.value.toLowerCase().trim()
@@ -15,13 +23,46 @@ const filteredFunctions = computed(() => {
   )
 })
 
+const totalHeight  = computed(() => filteredFunctions.value.length * ITEM_HEIGHT)
+
+const visibleRange = computed(() => {
+  const start = Math.max(0, Math.floor(scrollTop.value / ITEM_HEIGHT) - OVERSCAN)
+  const end   = Math.min(
+    filteredFunctions.value.length,
+    Math.ceil((scrollTop.value + viewportHeight.value) / ITEM_HEIGHT) + OVERSCAN,
+  )
+  return { start, end }
+})
+
+const visibleItems = computed(() =>
+  filteredFunctions.value.slice(visibleRange.value.start, visibleRange.value.end)
+)
+
+const offsetY = computed(() => visibleRange.value.start * ITEM_HEIGHT)
+
+function onScroll(e: Event) {
+  scrollTop.value = (e.target as HTMLElement).scrollTop
+}
+
+let ro: ResizeObserver | null = null
+onMounted(() => {
+  if (listEl.value) {
+    viewportHeight.value = listEl.value.clientHeight
+    ro = new ResizeObserver(([entry]) => {
+      viewportHeight.value = entry.contentRect.height
+    })
+    ro.observe(listEl.value)
+  }
+})
+onUnmounted(() => ro?.disconnect())
+
+// ── Resource tree ────────────────────────────────────────────────────────────
 function formatBytes(b: number) {
   if (b < 1024) return `${b}B`
   if (b < 1048576) return `${(b / 1024).toFixed(0)}KB`
   return `${(b / 1048576).toFixed(1)}MB`
 }
 
-// Recursive resource tree node (inline component)
 const ResourceTreeNode = defineComponent({
   name: 'ResourceTreeNode',
   props: { node: { type: Object, required: true } },
@@ -47,8 +88,7 @@ const ResourceTreeNode = defineComponent({
         ? h('div', { class: 'rtree-children' },
             props.node.children.map((c: { id: string }) =>
               h(ResourceTreeNode, { node: c, key: c.id })
-            )
-          )
+            ))
         : null,
     ])
   },
@@ -58,29 +98,41 @@ const ResourceTreeNode = defineComponent({
 <template>
   <div class="sidebar">
     <div class="tab-strip">
-      <button class="tab-btn" :class="{ active: ui.sidebarTab === 'functions' }" @click="ui.sidebarTab = 'functions'">Functions</button>
-      <button class="tab-btn" :class="{ active: ui.sidebarTab === 'resources' }" @click="ui.sidebarTab = 'resources'">Resources</button>
+      <button class="tab-btn" :class="{ active: ui.sidebarTab === 'functions' }"
+              @click="ui.sidebarTab = 'functions'">Functions</button>
+      <button class="tab-btn" :class="{ active: ui.sidebarTab === 'resources' }"
+              @click="ui.sidebarTab = 'resources'">Resources</button>
     </div>
 
     <template v-if="ui.sidebarTab === 'functions'">
       <div class="search-wrap">
         <input v-model="search" class="search" placeholder="Search functions…" spellcheck="false" />
+        <span v-if="filteredFunctions.length > 0" class="fn-count">
+          {{ filteredFunctions.length.toLocaleString() }}
+        </span>
       </div>
+
       <div v-if="binary.isDecompiling && filteredFunctions.length === 0" class="empty-state">
         <div class="loading-dots"><span /><span /><span /></div>
         <p class="empty-label">Decompiling…</p>
       </div>
-      <div v-else class="fn-list">
-        <div
-          v-for="fn in filteredFunctions"
-          :key="fn.address"
-          class="fn-item"
-          :class="{ active: binary.activeFunction?.address === fn.address }"
-          :title="fn.signature"
-          @click="binary.setActiveFunction(fn.address)"
-        >
-          <span class="fn-name">{{ fn.name }}</span>
-          <span class="fn-addr">{{ fn.address }}</span>
+
+      <div v-else class="fn-list" ref="listEl" @scroll.passive="onScroll">
+        <div :style="{ height: totalHeight + 'px', position: 'relative' }">
+          <div :style="{ transform: `translateY(${offsetY}px)` }">
+            <div
+              v-for="fn in visibleItems"
+              :key="fn.address"
+              class="fn-item"
+              :class="{ active: binary.activeFunction?.address === fn.address }"
+              :title="fn.signature"
+              :style="{ height: ITEM_HEIGHT + 'px' }"
+              @click="binary.setActiveFunction(fn.address)"
+            >
+              <span class="fn-name">{{ fn.name }}</span>
+              <span class="fn-addr">{{ fn.address }}</span>
+            </div>
+          </div>
         </div>
         <div v-if="binary.isDecompiling" class="loading-more">
           <span class="spin-dot" /> Decompiling…
@@ -108,19 +160,27 @@ const ResourceTreeNode = defineComponent({
   cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s;
 }
 .tab-btn.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
-.search-wrap { padding: 8px; flex-shrink: 0; }
+
+.search-wrap { padding: 8px; flex-shrink: 0; position: relative; }
 .search {
-  width: 100%; padding: 7px 10px; background: var(--color-bg-elevated);
-  border: 1px solid var(--color-bg-border); border-radius: 6px;
-  color: var(--color-text-primary); font-size: 12px; outline: none; transition: border-color 0.15s;
+  width: 100%; padding: 7px 10px; padding-right: 44px; box-sizing: border-box;
+  background: var(--color-bg-elevated); border: 1px solid var(--color-bg-border);
+  border-radius: 6px; color: var(--color-text-primary); font-size: 12px;
+  outline: none; transition: border-color 0.15s;
 }
 .search:focus { border-color: var(--color-accent); }
 .search::placeholder { color: var(--color-text-muted); }
-.fn-list { flex: 1; overflow-y: auto; }
+.fn-count {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; color: var(--color-text-muted); font-family: var(--font-family-code);
+  pointer-events: none;
+}
+
+.fn-list { flex: 1; overflow-y: auto; overflow-x: hidden; }
 .fn-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 7px 12px; cursor: pointer; border-left: 2px solid transparent;
-  transition: background 0.1s, border-color 0.1s;
+  padding: 0 12px; cursor: pointer; border-left: 2px solid transparent;
+  transition: background 0.1s, border-color 0.1s; box-sizing: border-box;
 }
 .fn-item:hover  { background: var(--color-bg-surface); }
 .fn-item.active { background: var(--color-bg-elevated); border-left-color: var(--color-accent); }
@@ -132,27 +192,18 @@ const ResourceTreeNode = defineComponent({
   font-family: var(--font-family-code); font-size: 10px; color: var(--color-text-muted);
   flex-shrink: 0; margin-left: 8px;
 }
+
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 20px; }
 .empty-label { font-size: 12px; color: var(--color-text-muted); }
 .loading-dots { display: flex; gap: 4px; }
-.loading-dots span {
-  width: 5px; height: 5px; border-radius: 50%; background: var(--color-accent); opacity: 0.4;
-  animation: fade-in 1.2s ease infinite;
-}
+.loading-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--color-accent); opacity: 0.4; animation: fade-in 1.2s ease infinite; }
 .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
 .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
 .loading-more { display: flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 11px; color: var(--color-text-muted); }
-.spin-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  border: 1px solid var(--color-accent); border-top-color: transparent;
-  animation: spin 0.7s linear infinite;
-}
+.spin-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--color-accent); border-top-color: transparent; animation: spin 0.7s linear infinite; }
+
 .resource-list { flex: 1; overflow-y: auto; padding: 4px 0; }
-.rtree-node {}
-.rtree-row {
-  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
-  cursor: pointer; font-size: 12px; color: var(--color-text-secondary); transition: background 0.1s;
-}
+.rtree-row { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-secondary); transition: background 0.1s; }
 .rtree-row:hover { background: var(--color-bg-surface); color: var(--color-text-primary); }
 .rtree-arrow, .rtree-leaf { font-size: 10px; color: var(--color-text-muted); width: 10px; flex-shrink: 0; }
 .rtree-name { flex: 1; font-family: var(--font-family-code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
