@@ -862,6 +862,127 @@
       font-size: 12px; color: var(--text-muted);
     }
 
+    /* ─── INSTALL SECTION ──────────────────────────────────────── */
+    .install-section {
+      padding: 100px 0;
+      background: var(--bg-base);
+      border-top: 1px solid var(--bg-border);
+    }
+
+    .install-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: start;
+    }
+
+    .install-cmd-block {
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .install-cmd-bar {
+      padding: 10px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--bg-border);
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-code);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .install-cmd-bar .terminal-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      display: inline-block;
+    }
+
+    .install-cmd-body {
+      padding: 20px;
+    }
+
+    .install-cmd-body code {
+      font-family: var(--font-code);
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text-code);
+      display: block;
+      word-break: break-all;
+    }
+
+    .install-cmd-body code .cmd-prompt {
+      color: var(--ok);
+      user-select: none;
+    }
+
+    .install-cmd-body code .cmd-comment {
+      color: var(--text-muted);
+    }
+
+    .install-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin-top: 32px;
+    }
+
+    .install-step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .install-step-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--bg-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .install-step-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .install-step-text strong {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .install-prereqs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+
+    .prereq-tag {
+      padding: 6px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: var(--font-code);
+      color: var(--text-secondary);
+    }
+
+    @media (max-width: 900px) {
+      .install-grid { grid-template-columns: 1fr; }
+    }
+
     /* ─── REVEAL ANIMATIONS ─────────────────────────────────────── */
     .reveal {
       opacity: 0;
@@ -941,6 +1062,7 @@
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
       <a href="#ai">AI Engine</a>
+      <a href="#install">Install</a>
       <a href="https://github.com/ash-rain/softy" target="_blank" rel="noopener" class="nav-cta">GitHub →</a>
     </div>
   </nav>
@@ -1299,6 +1421,76 @@
           <div class="format-archs">Roadmap v1.1</div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ═══ INSTALL ═════════════════════════════════════════════════ -->
+  <section class="install-section" id="install">
+    <div class="container">
+      <div class="reveal">
+        <div class="section-label">Get started</div>
+        <h2 class="section-title">One command. Everything you need.</h2>
+      </div>
+
+      <div class="install-grid">
+        <div class="reveal">
+          <div class="install-cmd-block">
+            <div class="install-cmd-bar">
+              <span class="terminal-dot"></span> Terminal
+            </div>
+            <div class="install-cmd-body">
+              <code><span class="cmd-comment"># Install Softy (macOS / Linux)</span></code>
+              <code><span class="cmd-prompt">$ </span>curl -fsSL https://raw.githubusercontent.com/ash-rain/softy/main/install.sh | bash</code>
+              <code>&nbsp;</code>
+              <code><span class="cmd-comment"># Custom install directory</span></code>
+              <code><span class="cmd-prompt">$ </span>SOFTY_DIR=/opt/softy curl -fsSL ... | bash</code>
+              <code>&nbsp;</code>
+              <code><span class="cmd-comment"># Or clone manually</span></code>
+              <code><span class="cmd-prompt">$ </span>git clone https://github.com/ash-rain/softy.git</code>
+              <code><span class="cmd-prompt">$ </span>cd softy && npm install</code>
+              <code><span class="cmd-prompt">$ </span>npm run docker:build && npm run docker:up</code>
+              <code><span class="cmd-prompt">$ </span>npm run dev</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal">
+          <p class="section-body" style="margin-bottom:8px;">
+            The install script clones the repo, installs dependencies, builds the Docker backend, and starts everything. Ready in minutes.
+          </p>
+
+          <div class="install-steps">
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <div class="install-step-text"><strong>Clones the repo</strong> into ~/softy (configurable via SOFTY_DIR)</div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <div class="install-step-text"><strong>Installs Node dependencies</strong> via npm ci</div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <div class="install-step-text"><strong>Builds the Docker backend</strong> — Ghidra, Radare2, Clang, NASM, all containerized</div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">4</div>
+              <div class="install-step-text"><strong>Starts the backend</strong> and waits for health check on port 7800</div>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">5</div>
+              <div class="install-step-text"><strong>Builds the Electron app</strong> — ready to launch</div>
+            </div>
+          </div>
+
+          <div class="install-prereqs">
+            <div class="prereq-tag">Node.js >= 18</div>
+            <div class="prereq-tag">Docker</div>
+            <div class="prereq-tag">git</div>
+            <div class="prereq-tag">macOS / Linux</div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </section>
 

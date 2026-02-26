@@ -200,6 +200,39 @@ Ghidra requires Java 21+. Softy bundles a JRE — no separate installation neede
 
 ---
 
+## Installation
+
+### Quick Install (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ash-rain/softy/main/install.sh | bash
+```
+
+This will clone the repo, install dependencies, build the Docker backend, and start everything. Requires **git**, **Node.js >= 18**, and **Docker** (running).
+
+### Options
+
+```bash
+# Custom install directory (default: ~/softy)
+SOFTY_DIR=/opt/softy curl -fsSL https://raw.githubusercontent.com/ash-rain/softy/main/install.sh | bash
+
+# Use a specific branch
+SOFTY_BRANCH=dev curl -fsSL https://raw.githubusercontent.com/ash-rain/softy/main/install.sh | bash
+```
+
+### Manual Install
+
+```bash
+git clone https://github.com/ash-rain/softy.git
+cd softy
+npm install
+npm run docker:build
+npm run docker:up
+npm run dev
+```
+
+---
+
 ## License
 
 MIT — use it, fork it, build on it.
