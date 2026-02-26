@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Softy — Every binary has a story. Read it.</title>
+  <meta name="description" content="Softy decompiles any binary into readable, editable, recompilable code — powered by AI. Built for engineers, researchers, and the curious." />
+  <meta property="og:title" content="Softy — Every binary has a story. Read it." />
+  <meta property="og:description" content="Decompile any binary into readable code. Edit it. Compile it back. Powered by local AI." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-void:      #030507;
+      --bg-base:      #090d12;
+      --bg-surface:   #0f1520;
+      --bg-elevated:  #161e2e;
+      --bg-border:    #1e2d42;
+      --accent:       #00d4ff;
+      --accent-dim:   #0099cc;
+      --accent-glow:  rgba(0,212,255,0.12);
+      --accent-glow2: rgba(0,212,255,0.05);
+      --ok:           #00ff9d;
+      --warn:         #ffaa00;
+      --err:          #ff4444;
+      --ai:           #a855f7;
+      --ai-glow:      rgba(168,85,247,0.12);
+      --text-primary: #e8f4fd;
+      --text-secondary: #7a9ab8;
+      --text-muted:   #3d5a78;
+      --text-code:    #c9e8ff;
+      --font-ui:      'Inter', system-ui, sans-serif;
+      --font-code:    'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-ui);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ─── NOISE TEXTURE ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.4;
+    }
+
+    /* ─── GRID BACKGROUND ───────────────────────────────────────── */
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 100%);
+    }
+
+    /* ─── NAV ───────────────────────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 48px;
+      height: 64px;
+      background: rgba(3,5,7,0.7);
+      backdrop-filter: blur(20px) saturate(1.2);
+      border-bottom: 1px solid rgba(30,45,66,0.5);
+    }
+
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 18px; font-weight: 600; color: var(--text-primary);
+      text-decoration: none; letter-spacing: -0.02em;
+    }
+
+    .nav-logo .logo-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--ai));
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+
+    .nav-links {
+      display: flex; align-items: center; gap: 32px;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary); text-decoration: none;
+      font-size: 14px; font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text-primary); }
+
+    .nav-cta {
+      padding: 8px 20px;
+      background: transparent;
+      border: 1px solid var(--bg-border);
+      border-radius: 6px;
+      color: var(--text-primary) !important;
+      font-size: 13px !important;
+      transition: border-color 0.2s, background 0.2s !important;
+    }
+
+    .nav-cta:hover {
+      border-color: var(--accent) !important;
+      background: var(--accent-glow) !important;
+      color: var(--accent) !important;
+    }
+
+    /* ─── SECTIONS ──────────────────────────────────────────────── */
+    section { position: relative; z-index: 1; }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 48px;
+    }
+
+    /* ─── HERO ──────────────────────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      text-align: center;
+      padding: 120px 48px 80px;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: -200px; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 600px;
+      background: radial-gradient(ellipse at center, rgba(0,212,255,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      background: rgba(0,212,255,0.06);
+      border: 1px solid rgba(0,212,255,0.2);
+      border-radius: 100px;
+      font-size: 12px; font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 0.04em; text-transform: uppercase;
+      margin-bottom: 32px;
+      opacity: 0; animation: fadeUp 0.6s ease 0.1s forwards;
+    }
+
+    .hero-badge .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s ease infinite;
+    }
+
+    .hero-headline {
+      font-size: clamp(40px, 7vw, 80px);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      opacity: 0; animation: fadeUp 0.7s ease 0.2s forwards;
+    }
+
+    .hero-headline .accent-word {
+      background: linear-gradient(135deg, var(--accent) 0%, #66e0ff 50%, var(--ai) 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-sub {
+      font-size: 20px; font-weight: 400;
+      color: var(--text-secondary);
+      max-width: 560px;
+      line-height: 1.6;
+      margin-bottom: 48px;
+      opacity: 0; animation: fadeUp 0.7s ease 0.35s forwards;
+    }
+
+    .hero-actions {
+      display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+      margin-bottom: 80px;
+      opacity: 0; animation: fadeUp 0.7s ease 0.45s forwards;
+    }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 28px;
+      background: var(--accent);
+      color: var(--bg-void);
+      font-family: var(--font-ui);
+      font-size: 15px; font-weight: 600;
+      border: none; border-radius: 8px;
+      cursor: pointer; text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+      box-shadow: 0 0 0 0 rgba(0,212,255,0);
+    }
+
+    .btn-primary:hover {
+      background: #1adeff;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 32px rgba(0,212,255,0.3), 0 0 0 1px rgba(0,212,255,0.4);
+    }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 28px;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 15px; font-weight: 500;
+      border: 1px solid var(--bg-border);
+      border-radius: 8px;
+      cursor: pointer; text-decoration: none;
+      transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-surface);
+      transform: translateY(-1px);
+    }
+
+    /* ─── TERMINAL HERO WINDOW ──────────────────────────────────── */
+    .hero-window {
+      width: 100%; max-width: 860px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(0,212,255,0.06),
+        0 40px 80px rgba(0,0,0,0.6),
+        0 0 120px rgba(0,212,255,0.04);
+      opacity: 0; animation: fadeUp 0.8s ease 0.55s forwards;
+    }
+
+    .window-bar {
+      display: flex; align-items: center; gap: 0;
+      padding: 12px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--bg-border);
+    }
+
+    .window-dots {
+      display: flex; gap: 6px; margin-right: 12px;
+    }
+
+    .window-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+    }
+
+    .window-dot:nth-child(1) { background: #ff5f57; }
+    .window-dot:nth-child(2) { background: #ffbd2e; }
+    .window-dot:nth-child(3) { background: #28ca41; }
+
+    .window-title {
+      flex: 1; text-align: center;
+      font-size: 12px; color: var(--text-muted);
+      font-family: var(--font-code);
+    }
+
+    .window-body {
+      display: grid; grid-template-columns: 1fr 1fr;
+      min-height: 320px;
+    }
+
+    .window-pane {
+      padding: 20px 24px;
+      font-family: var(--font-code);
+      font-size: 12px;
+      line-height: 1.8;
+      overflow: hidden;
+    }
+
+    .window-pane + .window-pane {
+      border-left: 1px solid var(--bg-border);
+    }
+
+    .pane-header {
+      font-size: 10px; font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.08em; text-transform: uppercase;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .pane-header::before {
+      content: '';
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--accent);
+    }
+
+    /* Disassembly pane */
+    .asm-line { display: flex; gap: 16px; }
+    .asm-addr { color: var(--text-muted); min-width: 72px; user-select: none; }
+    .asm-bytes { color: #2a4a6a; min-width: 90px; }
+    .asm-mnem { color: var(--accent); min-width: 60px; }
+    .asm-op   { color: var(--text-code); }
+    .asm-op .reg  { color: #66e0ff; }
+    .asm-op .imm  { color: #ff9933; }
+    .asm-op .mem  { color: var(--ok); }
+    .asm-cmt  { color: var(--text-muted); margin-left: 8px; }
+
+    /* Decompiled pane */
+    .code-kw    { color: var(--accent); }
+    .code-type  { color: #00e5cc; }
+    .code-fn    { color: #66d9ff; }
+    .code-str   { color: #ffcc66; }
+    .code-num   { color: #ff9933; }
+    .code-cmt   { color: var(--text-muted); }
+    .code-ai    { color: #b880ff; border-bottom: 1px dashed rgba(168,85,247,0.4); }
+    .code-indent-1 { padding-left: 16px; }
+    .code-indent-2 { padding-left: 32px; }
+
+    .ai-label {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 9px; font-family: var(--font-ui);
+      color: var(--ai); background: rgba(168,85,247,0.08);
+      border: 1px solid rgba(168,85,247,0.2);
+      border-radius: 3px; padding: 1px 5px;
+      vertical-align: middle; margin-left: 6px;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+
+    /* Cursor blink */
+    .cursor {
+      display: inline-block;
+      width: 7px; height: 13px;
+      background: var(--accent);
+      animation: blink 1.2s step-end infinite;
+      vertical-align: text-bottom; margin-left: 2px;
+    }
+
+    /* ─── SCROLLING SCAN LINE ───────────────────────────────────── */
+    .hero-window::after {
+      content: '';
+      position: absolute; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0,212,255,0.4), transparent);
+      animation: scanline 4s ease infinite;
+      pointer-events: none;
+    }
+
+    /* ─── STATS BAR ─────────────────────────────────────────────── */
+    .stats-bar {
+      padding: 10px 24px;
+      background: rgba(3,5,7,0.6);
+      border-top: 1px solid var(--bg-border);
+      display: flex; gap: 24px; flex-wrap: wrap;
+      font-size: 11px; font-family: var(--font-code);
+    }
+
+    .stat-item {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--text-muted);
+    }
+
+    .stat-value { color: var(--accent); font-weight: 500; }
+    .stat-ok    { color: var(--ok); }
+    .stat-ai    { color: var(--ai); }
+
+    /* ─── SECTION HEADING ───────────────────────────────────────── */
+    .section-label {
+      display: inline-block;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+    }
+
+    .section-body {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 560px;
+      line-height: 1.7;
+    }
+
+    /* ─── PROBLEM ───────────────────────────────────────────────── */
+    .problem {
+      padding: 100px 0;
+    }
+
+    .problem-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .problem-stats {
+      display: flex; flex-direction: column; gap: 24px;
+    }
+
+    .problem-stat {
+      padding: 24px 28px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 10px;
+      border-left: 3px solid transparent;
+      transition: border-color 0.3s, transform 0.3s;
+    }
+
+    .problem-stat:hover {
+      border-left-color: var(--accent);
+      transform: translateX(4px);
+    }
+
+    .problem-stat .number {
+      font-size: 36px; font-weight: 700;
+      font-family: var(--font-code);
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .problem-stat .label {
+      font-size: 14px; color: var(--text-secondary);
+    }
+
+    /* ─── HOW IT WORKS ──────────────────────────────────────────── */
+    .how {
+      padding: 100px 0;
+    }
+
+    .how-header {
+      text-align: center;
+      margin-bottom: 72px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      background: var(--bg-border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .step {
+      background: var(--bg-base);
+      padding: 40px 36px;
+      position: relative;
+      transition: background 0.3s;
+    }
+
+    .step:hover { background: var(--bg-surface); }
+
+    .step-number {
+      font-family: var(--font-code);
+      font-size: 11px; font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      opacity: 0.7;
+    }
+
+    .step-icon {
+      width: 48px; height: 48px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+      font-size: 22px;
+    }
+
+    .step-icon.cyan  { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); }
+    .step-icon.green { background: rgba(0,255,157,0.08); border: 1px solid rgba(0,255,157,0.15); }
+    .step-icon.purple { background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.2); }
+
+    .step-title {
+      font-size: 18px; font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+    }
+
+    .step-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .step-arrow {
+      position: absolute; right: -16px; top: 50%;
+      transform: translateY(-50%);
+      width: 32px; height: 32px;
+      background: var(--bg-border);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted);
+      font-size: 12px; z-index: 2;
+    }
+
+    /* ─── FEATURES ──────────────────────────────────────────────── */
+    .features {
+      padding: 100px 0;
+    }
+
+    .features-header {
+      margin-bottom: 64px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--bg-border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .feature-card {
+      background: var(--bg-base);
+      padding: 36px 32px;
+      transition: background 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover { background: var(--bg-surface); }
+
+    .feature-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-color, var(--accent)), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover::before { opacity: 1; }
+
+    .feature-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: var(--icon-bg);
+      border: 1px solid var(--icon-border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+
+    .feature-title {
+      font-size: 16px; font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .feature-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    .feature-tags {
+      margin-top: 16px;
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+
+    .tag {
+      font-size: 10px; font-family: var(--font-code);
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      border: 1px solid var(--bg-border);
+      border-radius: 4px;
+      padding: 2px 7px;
+    }
+
+    /* ─── TECH STACK ────────────────────────────────────────────── */
+    .tech {
+      padding: 80px 0;
+      text-align: center;
+    }
+
+    .tech-label {
+      font-size: 12px; font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.1em; text-transform: uppercase;
+      margin-bottom: 36px;
+    }
+
+    .tech-row {
+      display: flex; flex-wrap: wrap;
+      justify-content: center; align-items: center;
+      gap: 12px;
+    }
+
+    .tech-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 16px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 8px;
+      font-size: 13px; font-weight: 500;
+      color: var(--text-secondary);
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+
+    .tech-pill:hover {
+      border-color: var(--bg-elevated);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    .tech-pill .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+
+    /* ─── AI SECTION ────────────────────────────────────────────── */
+    .ai-section {
+      padding: 100px 0;
+    }
+
+    .ai-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .ai-chat-window {
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 60px var(--ai-glow);
+    }
+
+    .chat-bar {
+      padding: 12px 16px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--bg-border);
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--text-muted);
+      font-family: var(--font-code);
+    }
+
+    .chat-bar .ai-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ai);
+      animation: pulse 2s ease infinite;
+    }
+
+    .chat-body {
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    .chat-msg {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .chat-msg.user {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--bg-border);
+      align-self: flex-end;
+      max-width: 85%;
+    }
+
+    .chat-msg.ai {
+      background: rgba(168,85,247,0.07);
+      border: 1px solid rgba(168,85,247,0.2);
+      color: var(--text-primary);
+      max-width: 95%;
+    }
+
+    .chat-msg.ai .ai-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: var(--ai);
+      margin-bottom: 6px; font-family: var(--font-ui);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    .chat-msg code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: rgba(0,0,0,0.3);
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: var(--text-code);
+    }
+
+    /* ─── PROVIDERS ─────────────────────────────────────────────── */
+    .providers {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; margin-top: 24px;
+    }
+
+    .provider-card {
+      padding: 16px 18px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 8px;
+      transition: border-color 0.2s;
+    }
+
+    .provider-card:hover { border-color: var(--ai); }
+
+    .provider-name {
+      font-size: 13px; font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .provider-badge {
+      font-size: 9px; padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    .badge-local   { background: rgba(0,255,157,0.1); color: var(--ok); border: 1px solid rgba(0,255,157,0.2); }
+    .badge-cloud   { background: rgba(168,85,247,0.1); color: var(--ai); border: 1px solid rgba(168,85,247,0.2); }
+
+    .provider-models {
+      font-size: 11px; color: var(--text-muted);
+      font-family: var(--font-code);
+    }
+
+    /* ─── FORMATS ───────────────────────────────────────────────── */
+    .formats {
+      padding: 80px 0;
+    }
+
+    .formats-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .formats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--bg-border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .format-cell {
+      background: var(--bg-base);
+      padding: 28px 24px;
+      text-align: center;
+      transition: background 0.2s;
+    }
+
+    .format-cell:hover { background: var(--bg-surface); }
+
+    .format-ext {
+      font-family: var(--font-code);
+      font-size: 18px; font-weight: 500;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .format-name {
+      font-size: 12px; color: var(--text-muted);
+    }
+
+    .format-archs {
+      margin-top: 8px;
+      font-size: 10px; font-family: var(--font-code);
+      color: var(--text-muted);
+    }
+
+    /* ─── CTA ───────────────────────────────────────────────────── */
+    .cta-section {
+      padding: 120px 0;
+      text-align: center;
+    }
+
+    .cta-box {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 64px 48px;
+      background: var(--bg-surface);
+      border: 1px solid var(--bg-border);
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-box::before {
+      content: '';
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 60%; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .cta-glow {
+      position: absolute; top: -60px; left: 50%; transform: translateX(-50%);
+      width: 400px; height: 200px;
+      background: radial-gradient(ellipse, rgba(0,212,255,0.08), transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-title {
+      font-size: 36px; font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+
+    .cta-sub {
+      font-size: 16px; color: var(--text-secondary);
+      margin-bottom: 40px; line-height: 1.6;
+    }
+
+    /* ─── FOOTER ────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--bg-border);
+      padding: 40px 0;
+    }
+
+    .footer-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+
+    .footer-brand {
+      font-size: 14px; font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .footer-links {
+      display: flex; gap: 24px;
+    }
+
+    .footer-links a {
+      font-size: 13px; color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--text-secondary); }
+
+    .footer-legal {
+      font-size: 12px; color: var(--text-muted);
+    }
+
+    /* ─── REVEAL ANIMATIONS ─────────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ─── KEYFRAMES ─────────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    @keyframes scanline {
+      0%   { top: 50px;  opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { top: 420px; opacity: 0; }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-8px); }
+    }
+
+    /* ─── RESPONSIVE ────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      nav { padding: 0 24px; }
+      .nav-links { display: none; }
+      .container { padding: 0 24px; }
+      .hero { padding: 100px 24px 60px; }
+      .problem-grid,
+      .ai-grid         { grid-template-columns: 1fr; }
+      .steps           { grid-template-columns: 1fr; }
+      .features-grid   { grid-template-columns: 1fr; }
+      .formats-grid    { grid-template-columns: repeat(2, 1fr); }
+      .window-body     { grid-template-columns: 1fr; }
+      .window-pane + .window-pane { border-left: none; border-top: 1px solid var(--bg-border); }
+      .step-arrow      { display: none; }
+      .cta-box         { padding: 40px 24px; }
+      .footer-inner    { flex-direction: column; text-align: center; }
+    }
+
+    @media (max-width: 600px) {
+      .hero-headline { font-size: 36px; }
+      .formats-grid  { grid-template-columns: repeat(2, 1fr); }
+      .providers     { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="grid-bg"></div>
+
+  <!-- NAV -->
+  <nav>
+    <a class="nav-logo" href="#">
+      <div class="logo-icon">◈</div>
+      Softy
+    </a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#ai">AI Engine</a>
+      <a href="https://github.com/ash-rain/softy" target="_blank" rel="noopener" class="nav-cta">GitHub →</a>
+    </div>
+  </nav>
+
+  <!-- ═══ HERO ════════════════════════════════════════════════════ -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Coming soon &nbsp;·&nbsp; Open source
+    </div>
+
+    <h1 class="hero-headline">
+      Every binary<br>hides a <span class="accent-word">story</span>.
+    </h1>
+
+    <p class="hero-sub">
+      Drop any executable. Get readable, editable C code in seconds.
+      Powered by AI. Compiled back to binary with a keystroke.
+    </p>
+
+    <div class="hero-actions">
+      <a href="https://github.com/ash-rain/softy" target="_blank" rel="noopener" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+      <a href="#how" class="btn-secondary">
+        See how it works ↓
+      </a>
+    </div>
+
+    <!-- Editor Preview Window -->
+    <div class="hero-window" style="position:relative;">
+      <div class="window-bar">
+        <div class="window-dots">
+          <div class="window-dot"></div>
+          <div class="window-dot"></div>
+          <div class="window-dot"></div>
+        </div>
+        <div class="window-title">softy — calculator.exe — x86_64 PE</div>
+      </div>
+      <div class="window-body">
+        <!-- Left: Disassembly -->
+        <div class="window-pane">
+          <div class="pane-header">Disassembly</div>
+          <div class="asm-line"><span class="asm-addr">00401a30</span><span class="asm-bytes">55</span><span class="asm-mnem">push</span><span class="asm-op"><span class="reg">rbp</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a31</span><span class="asm-bytes">48 89 e5</span><span class="asm-mnem">mov</span><span class="asm-op"><span class="reg">rbp</span>, <span class="reg">rsp</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a34</span><span class="asm-bytes">48 83 ec 10</span><span class="asm-mnem">sub</span><span class="asm-op"><span class="reg">rsp</span>, <span class="imm">0x10</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a38</span><span class="asm-bytes">89 7d fc</span><span class="asm-mnem">mov</span><span class="asm-op"><span class="mem">[rbp-4]</span>, <span class="reg">edi</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a3b</span><span class="asm-bytes">89 75 f8</span><span class="asm-mnem">mov</span><span class="asm-op"><span class="mem">[rbp-8]</span>, <span class="reg">esi</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a3e</span><span class="asm-bytes">8b 45 fc</span><span class="asm-mnem">mov</span><span class="asm-op"><span class="reg">eax</span>, <span class="mem">[rbp-4]</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a41</span><span class="asm-bytes">0f af 45 f8</span><span class="asm-mnem">imul</span><span class="asm-op"><span class="reg">eax</span>, <span class="mem">[rbp-8]</span></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a45</span><span class="asm-bytes">c9</span><span class="asm-mnem">leave</span><span class="asm-op"></span></div>
+          <div class="asm-line"><span class="asm-addr">00401a46</span><span class="asm-bytes">c3</span><span class="asm-mnem">ret</span><span class="asm-op"></span></div>
+        </div>
+        <!-- Right: Decompiled C -->
+        <div class="window-pane">
+          <div class="pane-header">Decompiled C <span class="ai-label">✦ AI enhanced</span></div>
+          <div><span class="code-cmt">// Multiplies two integers</span></div>
+          <div><span class="code-type">int</span> <span class="code-fn code-ai">multiply</span><span class="code-ai">(</span><span class="code-type code-ai">int</span> <span class="code-ai">a</span>, <span class="code-type code-ai">int</span> <span class="code-ai">b</span><span class="code-ai">)</span> {</div>
+          <div class="code-indent-1"><span class="code-kw">return</span> <span class="code-ai">a</span> * <span class="code-ai">b</span>;</div>
+          <div>}</div>
+          <div>&nbsp;</div>
+          <div><span class="code-cmt">// Computes factorial recursively</span></div>
+          <div><span class="code-type">long long</span> <span class="code-fn code-ai">factorial</span>(<span class="code-type">int</span> <span class="code-ai">n</span>) {</div>
+          <div class="code-indent-1"><span class="code-kw">if</span> (<span class="code-ai">n</span> &lt;= <span class="code-num">1</span>) <span class="code-kw">return</span> <span class="code-num">1</span>;</div>
+          <div class="code-indent-1"><span class="code-kw">return</span> <span class="code-ai">n</span> * <span class="code-fn">factorial</span>(<span class="code-ai">n</span> - <span class="code-num">1</span>);</div>
+          <div>}<span class="cursor"></span></div>
+        </div>
+      </div>
+      <div class="stats-bar">
+        <div class="stat-item"><span class="stat-value">847</span> functions</div>
+        <div class="stat-item"><span class="stat-ok">✓</span>&nbsp;<span>Decompiled</span></div>
+        <div class="stat-item"><span class="stat-ai">✦</span>&nbsp;AI renamed · <span class="stat-ai">all vars</span></div>
+        <div class="stat-item">x86-64 · PE32+ · MSVC 19.38</div>
+        <div class="stat-item" style="margin-left:auto;color:var(--text-muted)">Ghidra 11.3 · 3.2s</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PROBLEM ══════════════════════════════════════════════════ -->
+  <section class="problem">
+    <div class="container">
+      <div class="problem-grid">
+        <div class="reveal">
+          <div class="section-label">The problem</div>
+          <h2 class="section-title">Reverse engineering shouldn't require a PhD.</h2>
+          <p class="section-body">
+            The tools exist. IDA Pro, Ghidra, Binary Ninja — they're powerful. But they were
+            built for the 1% who already know everything. The other 99% are left staring
+            at <code style="font-family:var(--font-code);font-size:14px;color:var(--text-code)">FUN_00401a30</code> and guessing.
+            <br><br>
+            Softy changes the equation. You don't need to know assembly. You don't need to spend
+            hours renaming variables. The AI does it. You just need to understand what you're looking at.
+          </p>
+        </div>
+        <div class="problem-stats reveal">
+          <div class="problem-stat">
+            <div class="number">~$5,000</div>
+            <div class="label">Cost of a commercial reverse engineering tool license. Per seat.</div>
+          </div>
+          <div class="problem-stat">
+            <div class="number">∞</div>
+            <div class="label">Hours spent renaming <code style="font-family:var(--font-code);font-size:12px">local_18</code>, <code style="font-family:var(--font-code);font-size:12px">FUN_00401a30</code>. Until now.</div>
+          </div>
+          <div class="problem-stat">
+            <div class="number">7+</div>
+            <div class="label">Architectures supported. x86, x64, ARM, ARM64, MIPS, RISC-V, PPC.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ HOW IT WORKS ═════════════════════════════════════════════ -->
+  <section class="how" id="how">
+    <div class="container">
+      <div class="how-header reveal">
+        <div class="section-label">How it works</div>
+        <h2 class="section-title">Three steps. That's it.</h2>
+      </div>
+      <div class="steps reveal">
+        <div class="step" style="position:relative;">
+          <div class="step-number">Step 01</div>
+          <div class="step-icon cyan">◎</div>
+          <div class="step-title">Drop your binary</div>
+          <div class="step-desc">
+            Drag in any executable — <code style="font-family:var(--font-code);font-size:12px">.exe</code>, ELF, <code style="font-family:var(--font-code);font-size:12px">.dylib</code>, firmware, WASM.
+            Softy detects the format, architecture, and compiler automatically, then starts analysis immediately.
+          </div>
+          <div class="step-arrow">→</div>
+        </div>
+        <div class="step" style="position:relative;">
+          <div class="step-number">Step 02</div>
+          <div class="step-icon purple">✦</div>
+          <div class="step-title">AI reads it for you</div>
+          <div class="step-desc">
+            Ghidra decompiles. AI renames every variable and function to something meaningful,
+            recovers types, identifies algorithms, and adds explanatory comments. Functions stream
+            in as they're processed.
+          </div>
+          <div class="step-arrow">→</div>
+        </div>
+        <div class="step">
+          <div class="step-number">Step 03</div>
+          <div class="step-icon green">⬡</div>
+          <div class="step-title">Edit and rebuild</div>
+          <div class="step-desc">
+            Edit the decompiled C code in Monaco — real-time syntax checking, full autocomplete.
+            Hit compile. Clang rebuilds. Your modified binary is ready. Or export to VS Code for
+            a full IDE workflow.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FEATURES ═════════════════════════════════════════════════ -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features-header reveal">
+        <div class="section-label">Features</div>
+        <h2 class="section-title">Everything you need.<br>Nothing you don't.</h2>
+      </div>
+      <div class="features-grid reveal">
+
+        <div class="feature-card" style="--accent-color:var(--accent); --icon-bg:rgba(0,212,255,0.08); --icon-border:rgba(0,212,255,0.15);">
+          <div class="feature-icon">⬡</div>
+          <div class="feature-title">Multi-backend decompilation</div>
+          <div class="feature-desc">Ghidra for highest quality C output. Radare2 for instant analysis. RetDec as fallback. Results stream function-by-function as they're ready.</div>
+          <div class="feature-tags">
+            <span class="tag">Ghidra 11.3</span>
+            <span class="tag">Radare2</span>
+            <span class="tag">RetDec</span>
+          </div>
+        </div>
+
+        <div class="feature-card" style="--accent-color:var(--ai); --icon-bg:rgba(168,85,247,0.08); --icon-border:rgba(168,85,247,0.15);">
+          <div class="feature-icon">✦</div>
+          <div class="feature-title">AI-powered understanding</div>
+          <div class="feature-desc">Ask questions in plain English. Get instant variable renames, type recovery, algorithm identification, and vulnerability detection. Local or cloud — your choice.</div>
+          <div class="feature-tags">
+            <span class="tag">Ollama</span>
+            <span class="tag">OpenAI</span>
+            <span class="tag">Anthropic</span>
+            <span class="tag">OpenRouter</span>
+          </div>
+        </div>
+
+        <div class="feature-card" style="--accent-color:var(--ok); --icon-bg:rgba(0,255,157,0.06); --icon-border:rgba(0,255,157,0.12);">
+          <div class="feature-icon">⬢</div>
+          <div class="feature-title">Monaco code editor</div>
+          <div class="feature-desc">The same editor that powers VS Code. Full syntax highlighting, real-time error markers from Clang, bidirectional navigation between C code and disassembly.</div>
+          <div class="feature-tags">
+            <span class="tag">Monaco</span>
+            <span class="tag">LLVM/Clang</span>
+            <span class="tag">Keystone</span>
+          </div>
+        </div>
+
+        <div class="feature-card" style="--accent-color:#ffaa00; --icon-bg:rgba(255,170,0,0.07); --icon-border:rgba(255,170,0,0.12);">
+          <div class="feature-icon">◫</div>
+          <div class="feature-title">Resources browser</div>
+          <div class="feature-desc">PE icons, dialogs, manifests, string tables. ELF sections and symbols. Mach-O entitlements. Preview inline. Edit and inject back — all visually.</div>
+          <div class="feature-tags">
+            <span class="tag">PE/COFF</span>
+            <span class="tag">ELF</span>
+            <span class="tag">Mach-O</span>
+          </div>
+        </div>
+
+        <div class="feature-card" style="--accent-color:#66e0ff; --icon-bg:rgba(102,224,255,0.07); --icon-border:rgba(102,224,255,0.12);">
+          <div class="feature-icon">◉</div>
+          <div class="feature-title">Binary metadata panel</div>
+          <div class="feature-desc">Format, compiler, linker, entry points, imports and exports, section entropy visualization. Detects packers (UPX, Themida), recovers compiler versions, shows code signatures.</div>
+          <div class="feature-tags">
+            <span class="tag">Entropy</span>
+            <span class="tag">Hashes</span>
+            <span class="tag">Signatures</span>
+          </div>
+        </div>
+
+        <div class="feature-card" style="--accent-color:#4aa8ff; --icon-bg:rgba(74,168,255,0.07); --icon-border:rgba(74,168,255,0.12);">
+          <div class="feature-icon">⌗</div>
+          <div class="feature-title">VS Code integration</div>
+          <div class="feature-desc">One click to export your project into VS Code. Companion extension for syntax highlighting, compile-back command, and live sync. Changes in VS Code appear in Softy instantly.</div>
+          <div class="feature-tags">
+            <span class="tag">softy-vscode</span>
+            <span class="tag">LSP</span>
+            <span class="tag">File watch</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ AI SECTION ════════════════════════════════════════════════ -->
+  <section class="ai-section" id="ai">
+    <div class="container">
+      <div class="ai-grid">
+
+        <div class="reveal">
+          <div class="section-label">AI engine</div>
+          <h2 class="section-title">Local by default.<br>Powerful by design.</h2>
+          <p class="section-body">
+            Run entirely on your machine with Ollama — no data leaves your computer.
+            Or connect to cloud models when you need maximum capability.
+            The AI understands context across your entire binary, not just single functions.
+          </p>
+          <div class="providers">
+            <div class="provider-card">
+              <div class="provider-name">Ollama <span class="provider-badge badge-local">Local</span></div>
+              <div class="provider-models">deepseek-r1:14b · codellama:34b · starcoder2</div>
+            </div>
+            <div class="provider-card">
+              <div class="provider-name">OpenAI <span class="provider-badge badge-cloud">Cloud</span></div>
+              <div class="provider-models">gpt-4o · gpt-4o-mini</div>
+            </div>
+            <div class="provider-card">
+              <div class="provider-name">Anthropic <span class="provider-badge badge-cloud">Cloud</span></div>
+              <div class="provider-models">claude-3-5-sonnet · claude-3-haiku</div>
+            </div>
+            <div class="provider-card">
+              <div class="provider-name">OpenRouter <span class="provider-badge badge-cloud">Cloud</span></div>
+              <div class="provider-models">100+ models · one key</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-chat-window reveal">
+          <div class="chat-bar">
+            <div class="ai-dot"></div>
+            AI · deepseek-r1:14b · local
+          </div>
+          <div class="chat-body">
+            <div class="chat-msg user">
+              What does <code>FUN_004021a8</code> do? It keeps getting called before network operations.
+            </div>
+            <div class="chat-msg ai">
+              <div class="ai-tag">✦ Softy AI</div>
+              This is a <strong>TLS/SSL context initialization</strong> function. It:
+              <br><br>
+              1. Calls <code>SSL_CTX_new()</code> with <code>TLS_method()</code><br>
+              2. Sets certificate verification to <code>SSL_VERIFY_PEER</code><br>
+              3. Loads the system CA bundle via <code>SSL_CTX_set_default_verify_paths()</code>
+              <br><br>
+              It's called before every new connection to ensure a fresh context. I've renamed it to <code>initSslContext()</code> and recovered the <code>SSL_CTX*</code> return type.
+            </div>
+            <div class="chat-msg user">
+              Are there any certificate validation bypasses?
+            </div>
+            <div class="chat-msg ai">
+              <div class="ai-tag">✦ Softy AI</div>
+              ⚠️ Found one. In <code>verifyCallback()</code> at <code>0x00402a14</code>, the
+              verification result is overridden unconditionally — it always returns <code>1</code>
+              (accept) regardless of the actual cert check outcome.
+              <br><br>
+              This is a classic <strong>certificate pinning bypass</strong>. The binary will
+              accept any certificate, including self-signed or expired ones.<span class="cursor"></span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FORMATS ═══════════════════════════════════════════════════ -->
+  <section class="formats">
+    <div class="container">
+      <div class="formats-header reveal">
+        <div class="section-label">Supported formats</div>
+        <h2 class="section-title">If it's compiled, Softy reads it.</h2>
+      </div>
+      <div class="formats-grid reveal">
+        <div class="format-cell">
+          <div class="format-ext">.exe / .dll</div>
+          <div class="format-name">PE / COFF</div>
+          <div class="format-archs">x86 · x86-64</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">ELF</div>
+          <div class="format-name">Linux / BSD</div>
+          <div class="format-archs">x86-64 · ARM · MIPS · RISC-V</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">Mach-O</div>
+          <div class="format-name">macOS / iOS</div>
+          <div class="format-archs">ARM64 · x86-64 · fat binary</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">.wasm</div>
+          <div class="format-name">WebAssembly</div>
+          <div class="format-archs">wasm32 · wasm64</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">.class / .jar</div>
+          <div class="format-name">Java Bytecode</div>
+          <div class="format-archs">JVM · any version</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">.dex / .apk</div>
+          <div class="format-name">Android</div>
+          <div class="format-archs">Dalvik · ART</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">.bin / .fw</div>
+          <div class="format-name">Raw Firmware</div>
+          <div class="format-archs">ARM · MIPS · PPC</div>
+        </div>
+        <div class="format-cell">
+          <div class="format-ext">More</div>
+          <div class="format-name">.NET · Swift · Go</div>
+          <div class="format-archs">Roadmap v1.1</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ TECH ═══════════════════════════════════════════════════ -->
+  <section class="tech">
+    <div class="container">
+      <div class="tech-label">Built on the shoulders of giants</div>
+      <div class="tech-row">
+        <div class="tech-pill"><span class="dot" style="background:#00d4ff"></span>Electron</div>
+        <div class="tech-pill"><span class="dot" style="background:#42b883"></span>Vue 3</div>
+        <div class="tech-pill"><span class="dot" style="background:#06b6d4"></span>Tailwind CSS</div>
+        <div class="tech-pill"><span class="dot" style="background:#3178c6"></span>TypeScript</div>
+        <div class="tech-pill"><span class="dot" style="background:#ffd700"></span>Ghidra 11.3</div>
+        <div class="tech-pill"><span class="dot" style="background:#aaa"></span>Radare2</div>
+        <div class="tech-pill"><span class="dot" style="background:#0086ff"></span>LLVM / Clang</div>
+        <div class="tech-pill"><span class="dot" style="background:#a855f7"></span>Ollama</div>
+        <div class="tech-pill"><span class="dot" style="background:#10a37f"></span>OpenAI</div>
+        <div class="tech-pill"><span class="dot" style="background:#d97706"></span>Anthropic</div>
+        <div class="tech-pill"><span class="dot" style="background:#6366f1"></span>Monaco Editor</div>
+        <div class="tech-pill"><span class="dot" style="background:#f1c40f"></span>SQLite</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CTA ════════════════════════════════════════════════════ -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-box reveal">
+        <div class="cta-glow"></div>
+        <div class="cta-title">Built in the open.</div>
+        <p class="cta-sub">
+          Softy is open source under the MIT license. Star the repo to follow development.
+          The first binary you understand changes everything.
+        </p>
+        <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap;">
+          <a href="https://github.com/ash-rain/softy" target="_blank" rel="noopener" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            ★ Star on GitHub
+          </a>
+          <a href="https://github.com/ash-rain/softy/blob/main/README.md" target="_blank" rel="noopener" class="btn-secondary">
+            Read the docs
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FOOTER ════════════════════════════════════════════════ -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">◈ Softy</div>
+        <div class="footer-links">
+          <a href="https://github.com/ash-rain/softy" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/ash-rain/softy/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+          <a href="https://github.com/ash-rain/softy/blob/main/PLAN.md" target="_blank" rel="noopener">Roadmap</a>
+          <a href="https://github.com/ash-rain/softy/issues" target="_blank" rel="noopener">Issues</a>
+        </div>
+        <div class="footer-legal">MIT License · Open Source</div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ─── SCROLL REVEAL ────────────────────────────────────────────
+    const reveals = document.querySelectorAll('.reveal')
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible')
+          io.unobserve(entry.target)
+        }
+      })
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' })
+
+    reveals.forEach((el) => io.observe(el))
+
+    // ─── STAGGER CHILDREN IN GRIDS ───────────────────────────────
+    document.querySelectorAll('.features-grid, .steps, .formats-grid').forEach((grid) => {
+      Array.from(grid.children).forEach((child, i) => {
+        child.style.transitionDelay = `${i * 60}ms`
+        child.classList.add('reveal')
+        io.observe(child)
+      })
+    })
+
+    // ─── ACTIVE NAV ───────────────────────────────────────────────
+    const sections = document.querySelectorAll('section[id]')
+    const navLinks = document.querySelectorAll('.nav-links a[href^="#"]')
+
+    const sectionObs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          navLinks.forEach((link) => {
+            link.style.color = link.getAttribute('href') === `#${entry.target.id}`
+              ? 'var(--text-primary)'
+              : ''
+          })
+        }
+      })
+    }, { threshold: 0.5 })
+
+    sections.forEach((s) => sectionObs.observe(s))
+  </script>
+
+</body>
+</html>
