@@ -902,6 +902,34 @@
       display: inline-block;
     }
 
+    .install-os-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--bg-border);
+    }
+
+    .install-os-tab {
+      padding: 8px 18px;
+      font-size: 12px;
+      font-family: var(--font-code);
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+
+    .install-os-tab:hover { color: var(--text-secondary); }
+
+    .install-os-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .install-os-pane { display: none; }
+    .install-os-pane.active { display: block; }
+
     .install-cmd-body {
       padding: 20px;
     }
@@ -917,6 +945,11 @@
 
     .install-cmd-body code .cmd-prompt {
       color: var(--ok);
+      user-select: none;
+    }
+
+    .install-cmd-body code .cmd-ps-prompt {
+      color: #7b9ef0;
       user-select: none;
     }
 
@@ -1438,18 +1471,43 @@
             <div class="install-cmd-bar">
               <span class="terminal-dot"></span> Terminal
             </div>
-            <div class="install-cmd-body">
-              <code><span class="cmd-comment"># Install Softy (macOS / Linux)</span></code>
-              <code><span class="cmd-prompt">$ </span>curl -fsSL https://raw.githubusercontent.com/ash-rain/softy/main/install.sh | bash</code>
-              <code>&nbsp;</code>
-              <code><span class="cmd-comment"># Custom install directory</span></code>
-              <code><span class="cmd-prompt">$ </span>SOFTY_DIR=/opt/softy curl -fsSL ... | bash</code>
-              <code>&nbsp;</code>
-              <code><span class="cmd-comment"># Or clone manually</span></code>
-              <code><span class="cmd-prompt">$ </span>git clone https://github.com/ash-rain/softy.git</code>
-              <code><span class="cmd-prompt">$ </span>cd softy && npm install</code>
-              <code><span class="cmd-prompt">$ </span>npm run docker:build && npm run docker:up</code>
-              <code><span class="cmd-prompt">$ </span>npm run dev</code>
+            <div class="install-os-tabs">
+              <div class="install-os-tab active" onclick="switchOsTab('unix', this)">macOS / Linux</div>
+              <div class="install-os-tab" onclick="switchOsTab('win', this)">Windows</div>
+            </div>
+
+            <!-- macOS / Linux -->
+            <div class="install-os-pane active" id="os-pane-unix">
+              <div class="install-cmd-body">
+                <code><span class="cmd-comment"># Install Softy (macOS / Linux)</span></code>
+                <code><span class="cmd-prompt">$ </span>curl -fsSL https://raw.githubusercontent.com/ash-rain/softy/main/install.sh | bash</code>
+                <code>&nbsp;</code>
+                <code><span class="cmd-comment"># Custom install directory</span></code>
+                <code><span class="cmd-prompt">$ </span>SOFTY_DIR=/opt/softy curl -fsSL ... | bash</code>
+                <code>&nbsp;</code>
+                <code><span class="cmd-comment"># Or clone manually</span></code>
+                <code><span class="cmd-prompt">$ </span>git clone https://github.com/ash-rain/softy.git</code>
+                <code><span class="cmd-prompt">$ </span>cd softy && npm install</code>
+                <code><span class="cmd-prompt">$ </span>npm run docker:build && npm run docker:up</code>
+                <code><span class="cmd-prompt">$ </span>npm run dev</code>
+              </div>
+            </div>
+
+            <!-- Windows -->
+            <div class="install-os-pane" id="os-pane-win">
+              <div class="install-cmd-body">
+                <code><span class="cmd-comment"># Install Softy (Windows — run in PowerShell)</span></code>
+                <code><span class="cmd-ps-prompt">PS&gt; </span>irm https://raw.githubusercontent.com/ash-rain/softy/main/install.ps1 | iex</code>
+                <code>&nbsp;</code>
+                <code><span class="cmd-comment"># Custom install directory</span></code>
+                <code><span class="cmd-ps-prompt">PS&gt; </span>$env:SOFTY_DIR="C:\softy"; irm ... | iex</code>
+                <code>&nbsp;</code>
+                <code><span class="cmd-comment"># Or clone manually</span></code>
+                <code><span class="cmd-ps-prompt">PS&gt; </span>git clone https://github.com/ash-rain/softy.git</code>
+                <code><span class="cmd-ps-prompt">PS&gt; </span>cd softy; npm install</code>
+                <code><span class="cmd-ps-prompt">PS&gt; </span>npm run docker:build; npm run docker:up</code>
+                <code><span class="cmd-ps-prompt">PS&gt; </span>npm run dev</code>
+              </div>
             </div>
           </div>
         </div>
@@ -1486,7 +1544,7 @@
             <div class="prereq-tag">Node.js >= 18</div>
             <div class="prereq-tag">Docker</div>
             <div class="prereq-tag">git</div>
-            <div class="prereq-tag">macOS / Linux</div>
+            <div class="prereq-tag">macOS · Linux · Windows</div>
           </div>
         </div>
       </div>
@@ -1594,6 +1652,14 @@
     }, { threshold: 0.5 })
 
     sections.forEach((s) => sectionObs.observe(s))
+
+    // ─── OS TAB SWITCHER ──────────────────────────────────────────
+    function switchOsTab(os, clickedTab) {
+      document.querySelectorAll('.install-os-tab').forEach((t) => t.classList.remove('active'))
+      document.querySelectorAll('.install-os-pane').forEach((p) => p.classList.remove('active'))
+      clickedTab.classList.add('active')
+      document.getElementById('os-pane-' + os).classList.add('active')
+    }
   </script>
 
 </body>
